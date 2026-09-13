@@ -27,6 +27,9 @@ jobs:
           git clone --depth 1 --recursive https://github.com/HansKristian-Work/vkd3d-proton.git
           ls
           cd vkd3d-proton
+
+          # vkd3d-proton is doing things that 24.04 doesn't know about yet
+          sed -i 's/PATHCCH_NONE/0/g' libs/vkd3d-common/platform.c
           ./package-release.sh master build --no-package
           tar -czf ../vkd3d-proton.tar.gz build
       - name: Upload vkd3d artifact
