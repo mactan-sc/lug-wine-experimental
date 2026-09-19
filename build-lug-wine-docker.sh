@@ -13,6 +13,8 @@ wine_version=""
 lug_rev="1"
 output_dir="$SCRIPT_DIR/output"
 
+vkd3d_build_dir="./vkd3d-proton/build/vkd3d-proton-master"
+
 # LUG patches applied to every build, in order (mirrors build-lug-wine.sh)
 patches=("10.2+_eac_fix"
          "eac_locale"
@@ -44,7 +46,7 @@ preset_staging=false
 preset_wayland=false
 
 parse_adhoc() {
-  local -a extra
+  extra=()
   IFS=',' read -r -a extra <<< "$1"
   adhoc+=("${extra[@]}")
 }
@@ -64,17 +66,6 @@ preset_conf() {
   esac
 }
 
-runner_name() {
-  local name="lug-wine"
-  if [ "$preset_name" != "default" ]; then name="${name}-${preset_name}"; fi
-  if [ -n "$wine_version" ]; then
-    name="${name}-${wine_version}"
-  else
-    name="${name}-git"
-  fi
-  printf '%s-%s' "$name" "$lug_rev"
-}
-
 build_preset() {
   if ! preset_conf "$1"; then
     printf "%s: Unknown preset '%s'\n\n" "$0" "$1" >&2
@@ -82,28 +73,31 @@ build_preset() {
     exit $invalid_args
   fi
 
-  local name
-  name="$(runner_name)"
-
   # Adhoc patches
-  local -a all_patches=("${patches[@]}" "${adhoc[@]}")
+  all_patches=("${patches[@]}" "${adhoc[@]}")
 
-  local -a args=(
+  args=(
     --build-arg "PRESET=$preset_name"
     --build-arg "LUG_REV=$lug_rev"
     --build-arg "ENABLE_STAGING=$preset_staging"
     --build-arg "WAYLAND_DEFAULT=$preset_wayland"
     --build-arg "PATCH_LIST=${all_patches[*]}"
-    --build-arg "VKD3D_PROTON_DIR=./vkd3d-proton/build/vkd3d-proton-master/"
   )
   if [ -n "$wine_version" ]; then
     args+=(--build-arg "WINE_VERSION=wine-$wine_version")
     args+=(--build-arg "STAGING_VERSION=v$wine_version")
   fi
 
-  printf '==> Building preset %-16s -> %s.tar.gz\n' "$1" "$name"
+  # vkd3d-proton is optional
+  if [ -d "$vkd3d_build_dir" ]; then
+    args+=(--build-arg "RUNNER_BASE=vkd3d")
+    args+=(--build-arg "VKD3D_PROTON_DIR=$vkd3d_build_dir")
+    echo "==> Bundling vkd3d-proton modules from '$vkd3d_build_dir'"
+  else
+    echo "==> No vkd3d-proton modules at '$vkd3d_build_dir', keeping Wine's own vkd3d"
+  fi
+
   docker build "${args[@]}" --target export -o "$output_dir" "$SCRIPT_DIR"
-  printf '    wrote %s/%s.tar.gz\n' "$output_dir" "$name"
 }
 
 usage() {
@@ -119,8 +113,8 @@ Usage: ./build-lug-wine-docker.sh <options>
   -r, --revision                Revision number for the build (default: 1)
   -d, --vkd3d-proton-dir        Directory holding the prebuilt x64/ + x86/ vkd3d-proton
                                 modules to bundle. Optional: when it is missing (or outside
-                                the build context) the build proceeds and the runner keeps
-                                Wine's own vkd3d modules.
+                                the build context) the runner is built without them and
+                                keeps Wine's own vkd3d modules.
                                 default: ./vkd3d-proton/build/vkd3d-proton-master
 "
 }
@@ -164,7 +158,5 @@ while [ "$#" -gt 0 ]; do
   esac
   shift
 done
-
-mkdir -p "$output_dir"
 
 build_preset "$preset"

@@ -15,8 +15,13 @@ ARG PRESET=default
 ARG LUG_REV=1
 # Space separated list of LUG patches
 ARG PATCH_LIST=
-# Optional prebuilt vkd3d-proton
-ARG VKD3D_PROTON_DIR=.vkd3d-proton
+# Optional prebuilt vkd3d-proton modules. Only the "vkd3d" stage copies these
+# in, and that stage is only reachable when RUNNER_BASE selects it, so a missing
+# directory can never break a plain build.
+ARG VKD3D_PROTON_DIR=./vkd3d-proton
+# Stage the final runner is built from: "builder" keeps Wine's own vkd3d
+# modules, "vkd3d" bundles the prebuilt ones in first.
+ARG RUNNER_BASE=builder
 
 FROM ubuntu:24.04 AS builder
 
@@ -76,9 +81,9 @@ RUN VERSION="$(echo "${WINE_VERSION#wine-}" | sed 's/^v//' | tr '/' '_')"; \
     RUNNER_NAME="lug-wine"; \
     if [ -n "$PRESET" ] && [ "$PRESET" != "default" ]; then RUNNER_NAME="${RUNNER_NAME}-${PRESET}"; fi; \
     if [ -n "$VERSION" ] && [ "$VERSION" != "master" ]; then \
-        RUNNER_NAME="${RUNNER_NAME}-${VERSION}"; \
+        RUNNER_NAME="${RUNNER_NAME}-experimental-${VERSION}"; \
     else \
-        RUNNER_NAME="${RUNNER_NAME}-git"; \
+        RUNNER_NAME="${RUNNER_NAME}-experimental-git"; \
     fi; \
     RUNNER_NAME="${RUNNER_NAME}-${LUG_REV}"; \
     echo "$RUNNER_NAME" > /src/runner-name && \
@@ -159,7 +164,11 @@ RUN JOBS_N=$([ "$JOBS" = "auto" ] && nproc || echo "$JOBS") && \
     make -j"$JOBS_N" && \
     make install
 
-# Bundle prebuilt vkd3d-proton modules if available
+
+# bundle vkd3d-proton if available
+FROM builder AS vkd3d
+
+ARG VKD3D_PROTON_DIR
 COPY ${VKD3D_PROTON_DIR}/ /src/vkd3d-proton/
 RUN PREFIX_FULL="$PREFIX/$(cat /src/runner-name)"; \
     if [ -d /src/vkd3d-proton/x64 ] && [ -d /src/vkd3d-proton/x86 ]; then \
@@ -176,19 +185,19 @@ RUN PREFIX_FULL="$PREFIX/$(cat /src/runner-name)"; \
         echo "==> No vkd3d-proton build found, keeping Wine's own vkd3d modules"; \
     fi
 
-# Slim the installed runner before it is archived
-COPY slim-runner.sh /src/slim-runner.sh
-RUN bash /src/slim-runner.sh "$PREFIX/$(cat /src/runner-name)"
 
-# Archive the wine runner
+FROM ${RUNNER_BASE} AS runner
+# slim down the runner size
+COPY slim-runner.sh /src/slim-runner.sh
+
+#archive the runner
+RUN bash /src/slim-runner.sh "$PREFIX/$(cat /src/runner-name)"
 RUN TAR_BASE="$(cat /src/runner-name)" && \
     PREFIX_FULL="$PREFIX/$TAR_BASE" && \
     mkdir -p /out && \
     tar -czf "/out/${TAR_BASE}.tar.gz" -C "$(dirname "$PREFIX_FULL")" "$(basename "$PREFIX_FULL")" && \
     echo "Created /out/${TAR_BASE}.tar.gz"
 
-# Stage archived runner to the host
+# Stage the archived runner to the host
 FROM scratch AS export
-COPY --from=builder /out/*.tar.gz /
-
-FROM builder AS runner
+COPY --from=runner /out/*.tar.gz /
