@@ -88,7 +88,7 @@ jobs:
         shell: bash {0}
         run: |
           echo "$WINE_VERSION" "$LUG_REV"
-          ./build-lug-wine.sh --preset "${{ matrix.preset }}" --version "$WINE_VERSION" --revision "$LUG_REV"
+          ./build-lug-wine-docker.sh --preset "${{ matrix.preset }}" --version "$WINE_VERSION" --revision "$LUG_REV"
       - name: Upload Archive
         uses: actions/upload-artifact@v7
         with:
