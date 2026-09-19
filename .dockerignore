@@ -1,0 +1,5 @@
+.git
+.github
+output/
+wine-tkg-git/
+*.tar.gz

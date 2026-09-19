@@ -36,38 +36,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        include:
-          - os: ubuntu
-            image: ubuntu:24.04
-            preset: default
-          - os: ubuntu
-            image: ubuntu:24.04
-            preset: staging-default
-          - os: ubuntu
-            image: ubuntu:24.04
-            preset: staging-wayland
-          - os: ubuntu
-            image: ubuntu:24.04
-            preset: wayland
-    container:
-      image: ${{ matrix.image }}
-    env:
-      DEBIAN_FRONTEND: noninteractive
-      XDG_CACHE_HOME: /tmp/.cache
-      TZ: UTC
+        preset: [default, staging-default]
     steps:
-      - name: Prepare Container
-        shell: bash {0}
-        run: |
-          if [[ "${{ matrix.os }}" == "ubuntu" ]]; then
-            apt-get update
-            apt-get install -y git aptitude sudo curl libopenxr-dev
-            mkdir -p /usr/local/include/linux && curl -o /usr/local/include/linux/ntsync.h -fs --retry 5 https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/plain/include/uapi/linux/ntsync.h && echo "Latest ntsync.h downloaded!"
-          elif [[ "${{ matrix.os }}" == "arch" ]]; then
-            pacman -Syu --noconfirm git base-devel sudo git freetype2 graphite harfbuzz libpng fontconfig jack2 openxr
-            useradd user -G wheel && echo "user ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-            chown user -R .
-          fi
       - uses: actions/checkout@v6
         with:
           submodules: true
@@ -88,9 +58,9 @@ jobs:
         shell: bash {0}
         run: |
           echo "$WINE_VERSION" "$LUG_REV"
-          ./build-lug-wine.sh --preset "${{ matrix.preset }}" --version "$WINE_VERSION" --revision "$LUG_REV"
+          ./build-lug-wine-docker.sh --preset "${{ matrix.preset }}" --version "$WINE_VERSION" --revision "$LUG_REV"
       - name: Upload Archive
         uses: actions/upload-artifact@v7
         with:
-          name: "${{ matrix.os }}-${{ matrix.preset }}-build"
+          name: "${{ matrix.preset }}-build"
           path: ./output
