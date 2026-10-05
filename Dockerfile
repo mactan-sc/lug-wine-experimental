@@ -14,7 +14,7 @@ ARG PATCH_LIST=
 ARG VKD3D_PROTON_DIR=./vkd3d-proton
 ARG RUNNER_BASE=builder
 
-FROM ubuntu:24.04 AS builder
+FROM debian:13 AS builder
 
 ARG WINE_REPO
 ARG WINE_VERSION
@@ -123,10 +123,22 @@ RUN cd /src/wine && \
 # Apply LUG patches
 RUN cd /src/wine && \
     if [ "$WAYLAND_DEFAULT" = "true" ]; then PATCH_LIST="$PATCH_LIST default-to-wayland"; fi && \
+    PATCH_FAILED=0 && \
     for p in $PATCH_LIST; do \
         echo "==> Applying $p.patch"; \
-        patch -Np1 < "/src/patches/wine/$p.patch" || exit 1; \
-    done
+        if patch -Np1 < "/src/patches/wine/$p.patch"; then \
+            echo "==> Successfully applied $p.patch"; \
+        else \
+            PATCH_STATUS=$?; \
+            echo "!!! PATCH FAILURE: $p.patch (exit code $PATCH_STATUS) !!!"; \
+            echo "::error title=Patch%20application%20failed::Failed to apply $p.patch (exit code $PATCH_STATUS)"; \
+            PATCH_FAILED=1; \
+        fi; \
+    done && \
+    if [ "$PATCH_FAILED" -ne 0 ]; then \
+        echo "::error title=Patch%20application%20summary::One or more patches failed; see the failure banners above."; \
+        exit 1; \
+    fi
 
 # Regenerate build system after patching
 RUN cd /src/wine && \
